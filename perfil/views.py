@@ -3,13 +3,31 @@ from django.http import HttpResponse
 from .models import Conta, Categoria
 from django.contrib import messages
 from django.contrib.messages import constants
-from .utils import calcula_total
+from .utils import calcula_total, calcula_equilibrio_financeiro
+from extrato.models import Valores
+from datetime import datetime
 
 
 def home(request):
+    valores = Valores.objects.filter(data__month=datetime.now().month)
+    entradas = valores.filter(tipo='E')
+    saidas = valores.filter(tipo='S')
+
+    total_entradas = calcula_total(entradas, 'valor')
+    total_saidas = calcula_total(saidas, 'valor')
+
     contas = Conta.objects.all()
+
     saldo_total = calcula_total(contas, 'valor')
-    return render(request, 'home.html', {'contas': contas, 'saldo_total': saldo_total})
+
+    percentual_gastos_essenciais, percentual_gastos_nao_essenciais = calcula_equilibrio_financeiro()
+
+    return render(request, 'home.html', {'contas': contas,
+                                         'saldo_total': saldo_total,
+                                         'total_entradas': total_entradas,
+                                         'total_saidas': total_saidas,
+                                         'percentual_gastos_essenciais': int(percentual_gastos_essenciais),
+                                         'percentual_gastos_nao_essenciais': int(percentual_gastos_nao_essenciais)})
 
 
 def gerenciar(request):
@@ -70,3 +88,20 @@ def update_categoria(request, id):
     categoria.essencial = not categoria.essencial
     categoria.save()
     return redirect('/perfil/gerenciar/')
+
+
+def dashboard(request):
+    dados = {}
+    categorias = Categoria.objects.all()
+
+    for categoria in categorias:
+        total = 0
+        valores = Valores.objects.filter(categoria=categoria)
+        for v in valores:
+            total += v.valor
+        dados[categoria.categoria] = total
+
+    return render(request, 'dashboard.html', {'labels': list(dados.keys()), 'values': list(dados.values())})
+
+
+
